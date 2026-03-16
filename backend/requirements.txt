@@ -1,0 +1,30 @@
+# Web 框架
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+websockets==13.0.1
+
+# 資料庫
+sqlalchemy==2.0.35
+aiosqlite==0.20.0
+
+# AI / 音訊
+openai>=1.50.0         # Qwen3 DashScope 相容 OpenAI API
+torch>=2.4.0           # 本地模型 GPU 支援（可選）
+torchaudio>=2.4.0
+transformers>=4.44.0
+soundfile==0.12.1
+librosa==0.10.2
+numpy>=1.26.0
+
+# Spotify Pedalboard 音訊效果
+pedalboard==0.9.7
+
+# Whisper 語音轉文字
+openai-whisper==20240930
+
+# 工具
+python-dotenv==1.0.1
+pydantic==2.9.0
+pydantic-settings==2.5.2
+httpx==0.27.2

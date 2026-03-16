@@ -1,0 +1,36 @@
+# 環境變數（含 API 金鑰，絕對不提交）
+.env
+.env.local
+.env.*.local
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+backend/.venv/
+*.egg-info/
+
+# 儲存資料（本地生成的音訊、DB）
+backend/storage/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# 日誌
+*.log
