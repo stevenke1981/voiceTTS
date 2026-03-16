@@ -13,6 +13,10 @@ class VoiceProfile(Base):
     language: Mapped[str] = mapped_column(String(20), default="zh-TW")
     duration: Mapped[float] = mapped_column(Float, default=0.0)
     audio_path: Mapped[str] = mapped_column(String(500))
+    # DashScope 雲端 voice_id（語音複製後取得）
+    cloud_voice_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 轉錄文字（Whisper 結果）
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

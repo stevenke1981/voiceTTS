@@ -15,6 +15,8 @@ export interface VoiceProfile {
   name: string;
   language: string;
   duration: number;
+  transcript: string | null;
+  cloud_voice_id: string | null;
   created_at: string;
   audio_preview_url?: string;
 }

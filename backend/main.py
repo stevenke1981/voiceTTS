@@ -17,6 +17,7 @@ from api.clone import router as clone_router
 from api.realtime import router as realtime_router
 from api.story import router as story_router
 from api.engines import router as engines_router
+from api.transcribe import router as transcribe_router
 
 
 @asynccontextmanager
@@ -64,6 +65,7 @@ app.include_router(clone_router, prefix="/api/clone", tags=["Voice Clone"])
 app.include_router(realtime_router, prefix="/ws", tags=["Real-Time"])
 app.include_router(story_router, prefix="/api/story", tags=["Story Editor"])
 app.include_router(engines_router, prefix="/api/engines", tags=["Engines"])
+app.include_router(transcribe_router, prefix="/api/transcribe", tags=["Transcribe"])
 
 
 @app.get("/health")

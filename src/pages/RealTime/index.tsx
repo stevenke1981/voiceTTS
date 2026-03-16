@@ -1,149 +1,246 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Mic, MicOff, Radio, Volume2, Settings2 } from "lucide-react";
+import { Mic, MicOff, Radio, Volume2, Settings2, Circle } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 import clsx from "clsx";
 
+type ConvStatus = "idle" | "connecting" | "ready" | "converting" | "error";
+
+const BACKEND_WS = "ws://localhost:8765";
+
 export default function RealTimePage() {
-  const [isActive, setIsActive] = useState(false);
+  const [status, setStatus] = useState<ConvStatus>("idle");
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [selectedEngine, setSelectedEngine] = useState("cosyvoice");
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
+  const [statusMsg, setStatusMsg] = useState("");
+  const [outputVolume, setOutputVolume] = useState(1.0);
+
   const wsRef = useRef<WebSocket | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const levelTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   const { data: profiles = [] } = useQuery({
     queryKey: ["voice-profiles"],
     queryFn: () => apiClient.clone.listProfiles(),
   });
 
-  const toggleConversion = async () => {
-    if (isActive) {
-      stopConversion();
-    } else {
-      await startConversion();
-    }
-  };
+  const stopConversion = useCallback(() => {
+    wsRef.current?.close();
+    processorRef.current?.disconnect();
+    audioCtxRef.current?.close();
+    if (levelTimerRef.current) clearInterval(levelTimerRef.current);
+    wsRef.current = null;
+    audioCtxRef.current = null;
+    processorRef.current = null;
+    setStatus("idle");
+    setInputLevel(0);
+    setOutputLevel(0);
+    setStatusMsg("");
+  }, []);
 
-  const startConversion = async () => {
+  const startConversion = useCallback(async () => {
     if (!selectedProfileId) return;
+    setStatus("connecting");
+    setStatusMsg("連線中...");
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContextRef.current = new AudioContext({ sampleRate: 16000 });
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      audioCtxRef.current = ctx;
 
-      // WebSocket 連線到後端即時轉換
-      const ws = new WebSocket(
-        `ws://localhost:8765/ws/realtime?profile_id=${selectedProfileId}`
-      );
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = outputVolume;
+      gainNodeRef.current = gainNode;
+      gainNode.connect(ctx.destination);
+
+      // WebSocket 連線
+      const url = `${BACKEND_WS}/ws/realtime?profile_id=${selectedProfileId}&engine=${selectedEngine}`;
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
-      ws.onopen = () => setIsActive(true);
-      ws.onclose = () => setIsActive(false);
-      ws.onerror = () => setIsActive(false);
+      ws.onopen = () => setStatusMsg("等待後端就緒...");
 
-      // 音訊串流處理（簡化示意）
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+      ws.onmessage = async (evt) => {
+        // 文字訊息 = 控制訊號
+        if (typeof evt.data === "string") {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === "ready") {
+            setStatus("converting");
+            setStatusMsg(msg.msg);
+          } else if (msg.type === "error") {
+            setStatusMsg(`錯誤：${msg.msg}`);
+            setStatus("error");
+            stopConversion();
+          }
+          return;
+        }
+
+        // Binary = 轉換後的 WAV 音訊，播放出來
+        const blob = new Blob([evt.data], { type: "audio/wav" });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.volume = outputVolume;
+        audio.onended = () => URL.revokeObjectURL(url);
+        audio.play().catch(() => {});
+
+        // 輸出音量動畫
+        setOutputLevel(75 + Math.random() * 25);
+        setTimeout(() => setOutputLevel(0), 500);
+      };
+
+      ws.onclose = () => {
+        if (status !== "idle") stopConversion();
+      };
+
+      ws.onerror = () => {
+        setStatusMsg("WebSocket 連線錯誤");
+        setStatus("error");
+        stopConversion();
+      };
+
+      // 麥克風音訊 → WebSocket
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
 
       processor.onaudioprocess = (e) => {
-        const data = e.inputBuffer.getChannelData(0);
-        const level = Math.max(...Array.from(data).map(Math.abs));
-        setInputLevel(Math.min(level * 100, 100));
+        const input = e.inputBuffer.getChannelData(0);
+        // 音量計算
+        const rms = Math.sqrt(input.reduce((s, v) => s + v * v, 0) / input.length);
+        setInputLevel(Math.min(rms * 300, 100));
 
         if (ws.readyState === WebSocket.OPEN) {
-          const int16 = new Int16Array(data.map((v) => v * 32767));
+          const int16 = new Int16Array(input.map((v) => Math.max(-1, Math.min(1, v)) * 32767));
           ws.send(int16.buffer);
         }
       };
 
       source.connect(processor);
-      processor.connect(audioContextRef.current.destination);
-    } catch (err) {
-      console.error("無法啟動即時轉換：", err);
+      processor.connect(ctx.destination);
+
+      // 音量衰減動畫
+      levelTimerRef.current = setInterval(() => {
+        setInputLevel((v) => Math.max(0, v - 8));
+        setOutputLevel((v) => Math.max(0, v - 15));
+      }, 100);
+
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMsg(`啟動失敗：${msg}`);
+      setStatus("error");
+    }
+  }, [selectedProfileId, selectedEngine, outputVolume, status, stopConversion]);
+
+  const toggle = () => {
+    if (status === "idle" || status === "error") {
+      startConversion();
+    } else {
+      stopConversion();
     }
   };
 
-  const stopConversion = () => {
-    wsRef.current?.close();
-    audioContextRef.current?.close();
-    setIsActive(false);
-    setInputLevel(0);
-    setOutputLevel(0);
-  };
+  useEffect(() => () => stopConversion(), [stopConversion]);
 
-  useEffect(() => () => stopConversion(), []);
+  // 音量變化即時更新
+  useEffect(() => {
+    if (gainNodeRef.current) gainNodeRef.current.gain.value = outputVolume;
+  }, [outputVolume]);
+
+  const isActive = status === "converting" || status === "connecting";
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-3xl mx-auto space-y-5 animate-fade-in">
       <div>
         <h1 className="text-xl font-semibold text-surface-100">即時語音轉換</h1>
         <p className="text-sm text-surface-500 mt-0.5">
-          麥克風輸入即時轉換成目標聲音，延遲目標 &lt;200ms
+          麥克風輸入即時轉換成目標聲音
         </p>
       </div>
 
-      {/* 主控面板 */}
-      <div className="card p-8">
-        <div className="flex flex-col items-center gap-6">
-          {/* 大啟動按鈕 */}
-          <button
-            onClick={toggleConversion}
-            disabled={!selectedProfileId}
+      {/* 主控制區 */}
+      <div className="card p-8 flex flex-col items-center gap-6">
+        {/* 大按鈕 */}
+        <button
+          onClick={toggle}
+          disabled={!selectedProfileId && status === "idle"}
+          className={clsx(
+            "w-36 h-36 rounded-full flex flex-col items-center justify-center gap-2 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed",
+            isActive
+              ? "bg-red-500/20 border-2 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.25)] animate-pulse-slow"
+              : status === "error"
+                ? "bg-red-900/20 border-2 border-red-700"
+                : "bg-surface-800 border-2 border-surface-600 hover:border-accent/60 hover:shadow-[0_0_30px_rgba(124,111,247,0.15)]"
+          )}
+        >
+          {isActive ? (
+            <>
+              <MicOff size={34} className="text-red-400" />
+              <span className="text-xs text-red-400">點擊停止</span>
+            </>
+          ) : (
+            <>
+              <Mic size={34} className="text-surface-300" />
+              <span className="text-xs text-surface-500">
+                {!selectedProfileId ? "選擇輪廓" : "開始轉換"}
+              </span>
+            </>
+          )}
+        </button>
+
+        {/* 狀態 */}
+        <div className="flex items-center gap-2 text-sm">
+          <Circle
+            size={8}
             className={clsx(
-              "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed",
-              isActive
-                ? "bg-red-500/20 border-2 border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.3)] animate-pulse-slow"
-                : "bg-surface-800 border-2 border-surface-600 hover:border-accent/60 hover:shadow-[0_0_30px_rgba(124,111,247,0.2)]"
+              "fill-current",
+              status === "converting" ? "text-green-400"
+                : status === "connecting" ? "text-yellow-400 animate-pulse"
+                  : status === "error" ? "text-red-400"
+                    : "text-surface-600"
             )}
-          >
-            {isActive ? (
-              <MicOff size={36} className="text-red-400" />
-            ) : (
-              <Mic size={36} className="text-surface-300" />
-            )}
-          </button>
+          />
+          <span className={clsx(
+            status === "error" ? "text-red-400"
+              : status === "converting" ? "text-green-400"
+                : "text-surface-500"
+          )}>
+            {statusMsg || (selectedProfileId ? "待機中" : "請先選擇聲音輪廓")}
+          </span>
+        </div>
 
-          <p className="text-sm text-surface-400">
-            {!selectedProfileId
-              ? "請先選擇聲音輪廓"
-              : isActive
-                ? "轉換中 · 點擊停止"
-                : "點擊開始即時轉換"}
-          </p>
-
-          {/* 音量視覺化 */}
-          {isActive && (
-            <div className="w-full grid grid-cols-2 gap-4 animate-fade-in">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs text-surface-500">
-                  <Mic size={12} />
-                  <span>原聲輸入</span>
-                </div>
-                <div className="h-2 bg-surface-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-green-500 rounded-full transition-all duration-75"
-                    style={{ width: `${inputLevel}%` }}
-                  />
-                </div>
+        {/* 音量計 */}
+        {isActive && (
+          <div className="w-full max-w-sm grid grid-cols-2 gap-4 animate-fade-in">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-surface-500">
+                <Mic size={11} /><span>原聲</span>
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs text-surface-500">
-                  <Volume2 size={12} />
-                  <span>轉換輸出</span>
-                </div>
-                <div className="h-2 bg-surface-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent rounded-full transition-all duration-75"
-                    style={{ width: `${outputLevel}%` }}
-                  />
-                </div>
+              <div className="h-3 bg-surface-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-600 to-green-400 rounded-full transition-all duration-75"
+                  style={{ width: `${inputLevel}%` }}
+                />
               </div>
             </div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-surface-500">
+                <Volume2 size={11} /><span>轉換輸出</span>
+              </div>
+              <div className="h-3 bg-surface-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-accent to-accent-light rounded-full transition-all duration-150"
+                  style={{ width: `${outputLevel}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 設定 */}
       <div className="grid grid-cols-2 gap-4">
         {/* 聲音輪廓選擇 */}
         <div className="card p-4 space-y-3">
@@ -152,7 +249,7 @@ export default function RealTimePage() {
             <span className="label">目標聲音輪廓</span>
           </div>
           {profiles.length === 0 ? (
-            <p className="text-xs text-surface-500 text-center py-4">
+            <p className="text-xs text-surface-500 text-center py-5">
               請先至「語音複製」建立聲音輪廓
             </p>
           ) : (
@@ -161,7 +258,7 @@ export default function RealTimePage() {
                 <label
                   key={p.id}
                   className={clsx(
-                    "flex items-center gap-3 rounded-lg p-2.5 cursor-pointer transition-colors",
+                    "flex items-center gap-2.5 rounded-lg p-2.5 cursor-pointer transition-colors",
                     selectedProfileId === p.id
                       ? "bg-accent/15 border border-accent/30"
                       : "hover:bg-surface-800 border border-transparent"
@@ -170,10 +267,10 @@ export default function RealTimePage() {
                   <input
                     type="radio"
                     name="rt-profile"
+                    className="sr-only"
                     value={p.id}
                     checked={selectedProfileId === p.id}
                     onChange={() => setSelectedProfileId(p.id)}
-                    className="sr-only"
                   />
                   <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-xs text-accent-light">
                     {p.name[0]?.toUpperCase()}
@@ -188,33 +285,48 @@ export default function RealTimePage() {
           )}
         </div>
 
-        {/* 音訊設定 */}
+        {/* 設定 */}
         <div className="card p-4 space-y-4">
           <div className="flex items-center gap-2">
             <Settings2 size={14} className="text-accent-light" />
-            <span className="label">音訊設定</span>
+            <span className="label">轉換設定</span>
           </div>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-surface-400">輸入設備</label>
-              <select className="input text-sm">
-                <option>預設麥克風</option>
-              </select>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-surface-400">轉換引擎</label>
+            <select
+              className="input text-sm"
+              value={selectedEngine}
+              onChange={(e) => setSelectedEngine(e.target.value)}
+              disabled={isActive}
+            >
+              <option value="cosyvoice">CosyVoice2（中文最佳）</option>
+              <option value="qwen3_cloud">Qwen3-TTS 雲端</option>
+              <option value="chatterbox">Chatterbox</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs text-surface-400">
+              <span>輸出音量</span>
+              <span>{Math.round(outputVolume * 100)}%</span>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-surface-400">輸出設備</label>
-              <select className="input text-sm">
-                <option>預設揚聲器</option>
-                <option>虛擬音訊設備（VB-Cable）</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs text-surface-400">
-                <span>輸出音量</span>
-                <span>100%</span>
-              </div>
-              <input type="range" min={0} max={100} defaultValue={100} className="w-full accent-accent" />
-            </div>
+            <input
+              type="range" min={0} max={1} step={0.05}
+              value={outputVolume}
+              onChange={(e) => setOutputVolume(Number(e.target.value))}
+              className="w-full accent-accent h-1.5 cursor-pointer"
+            />
+          </div>
+
+          {/* 延遲提示 */}
+          <div className="rounded-lg bg-surface-800 p-3 space-y-1">
+            <p className="text-xs text-surface-400 font-medium">延遲說明</p>
+            <p className="text-[11px] text-surface-500 leading-relaxed">
+              轉換延遲取決於引擎與 GPU 速度。
+              CosyVoice2 本地模式約 300~600ms，
+              雲端 API 模式約 200~400ms。
+            </p>
           </div>
         </div>
       </div>
