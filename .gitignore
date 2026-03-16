@@ -29,6 +29,9 @@ src-tauri/gen/
 .idea/
 *.swp
 
+# Claude Code 本地設定
+.claude/settings.local.json
+
 # macOS
 .DS_Store
 
