@@ -21,6 +21,14 @@ class TTSRequest(BaseModel):
     voice_profile_id: str | None = None
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     pitch: int = Field(default=0, ge=-12, le=12)
+    # 後製效果
+    reverb_room: float = Field(default=0.0, ge=0.0, le=1.0)
+    reverb_wet: float = Field(default=0.0, ge=0.0, le=1.0)
+    compression_db: float = Field(default=0.0, ge=-30.0, le=0.0)
+    highpass_hz: float = Field(default=0.0, ge=0.0, le=20000.0)
+    lowpass_hz: float = Field(default=0.0, ge=0.0, le=20000.0)
+    delay_seconds: float = Field(default=0.0, ge=0.0, le=2.0)
+    gain_db: float = Field(default=0.0, ge=-24.0, le=24.0)
 
 
 class TTSJobOut(BaseModel):
@@ -87,6 +95,13 @@ async def _run_tts(job_id: str, req: TTSRequest):
                 after_speed,
                 final_path,
                 pitch_semitones=req.pitch,
+                reverb_room=req.reverb_room,
+                reverb_wet=req.reverb_wet,
+                compression_db=req.compression_db,
+                highpass_hz=req.highpass_hz,
+                lowpass_hz=req.lowpass_hz,
+                delay_seconds=req.delay_seconds,
+                gain_db=req.gain_db,
             )
 
             job.status = "done"

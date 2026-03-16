@@ -8,6 +8,14 @@ import {
   RotateCcw,
   Clock,
   AlignLeft,
+  ChevronDown,
+  ChevronUp,
+  Waves,
+  Activity,
+  Filter,
+  Zap,
+  Volume2,
+  Timer,
 } from "lucide-react";
 import { apiClient, type TTSRequest } from "@/lib/apiClient";
 import { useAppStore } from "@/stores/appStore";
@@ -22,6 +30,101 @@ const ENGINES: { value: TTSRequest["engine"]; label: string; badge: string; desc
   { value: "cosyvoice", label: "CosyVoice2", badge: "本地", desc: "中文語調最自然" },
 ];
 
+// 簡易 Toggle Switch
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={clsx(
+        "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+        checked ? "bg-accent" : "bg-surface-700"
+      )}
+    >
+      <span
+        className={clsx(
+          "pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200",
+          checked ? "translate-x-3" : "translate-x-0"
+        )}
+      />
+    </button>
+  );
+}
+
+// 效果滑桿列
+function EffectSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format: (v: number) => string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[10px] text-surface-500">
+        <span>{label}</span>
+        <span className="tabular-nums">{format(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-accent h-1 cursor-pointer"
+      />
+    </div>
+  );
+}
+
+// 效果區塊
+function EffectBlock({
+  icon: Icon,
+  label,
+  enabled,
+  onToggle,
+  children,
+}: {
+  icon: React.ElementType;
+  label: string;
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={clsx(
+        "rounded-lg border p-2.5 space-y-2 transition-colors",
+        enabled ? "border-accent/30 bg-accent/5" : "border-surface-800"
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Icon size={11} className={enabled ? "text-accent-light" : "text-surface-600"} />
+          <span className={clsx("text-xs", enabled ? "text-surface-200" : "text-surface-500")}>
+            {label}
+          </span>
+        </div>
+        <Toggle checked={enabled} onChange={onToggle} />
+      </div>
+      {enabled && children && <div className="space-y-2 pt-0.5">{children}</div>}
+    </div>
+  );
+}
+
 export default function TTSPage() {
   const { selectedVoiceProfileId, defaultEngine } = useAppStore();
   const [text, setText] = useState("");
@@ -32,6 +135,24 @@ export default function TTSPage() {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
     selectedVoiceProfileId
   );
+
+  // 後製效果狀態
+  const [effectsOpen, setEffectsOpen] = useState(false);
+  const [reverbEnabled, setReverbEnabled] = useState(false);
+  const [reverbRoom, setReverbRoom] = useState(0.4);
+  const [reverbWet, setReverbWet] = useState(0.3);
+  const [compEnabled, setCompEnabled] = useState(false);
+  const [compDb, setCompDb] = useState(-12);
+  const [hpEnabled, setHpEnabled] = useState(false);
+  const [hpHz, setHpHz] = useState(80);
+  const [lpEnabled, setLpEnabled] = useState(false);
+  const [lpHz, setLpHz] = useState(8000);
+  const [delayEnabled, setDelayEnabled] = useState(false);
+  const [delaySec, setDelaySec] = useState(0.15);
+  const [gainEnabled, setGainEnabled] = useState(false);
+  const [gainDb, setGainDb] = useState(0);
+
+  const activeEffectCount = [reverbEnabled, compEnabled, hpEnabled, lpEnabled, delayEnabled, gainEnabled].filter(Boolean).length;
 
   const { data: profiles = [] } = useQuery({
     queryKey: ["voice-profiles"],
@@ -57,7 +178,23 @@ export default function TTSPage() {
       voice_profile_id: selectedProfileId ?? undefined,
       speed,
       pitch,
+      reverb_room: reverbEnabled ? reverbRoom : 0.0,
+      reverb_wet: reverbEnabled ? reverbWet : 0.0,
+      compression_db: compEnabled ? compDb : 0.0,
+      highpass_hz: hpEnabled ? hpHz : 0.0,
+      lowpass_hz: lpEnabled ? lpHz : 0.0,
+      delay_seconds: delayEnabled ? delaySec : 0.0,
+      gain_db: gainEnabled ? gainDb : 0.0,
     });
+  };
+
+  const resetEffects = () => {
+    setReverbEnabled(false); setReverbRoom(0.4); setReverbWet(0.3);
+    setCompEnabled(false); setCompDb(-12);
+    setHpEnabled(false); setHpHz(80);
+    setLpEnabled(false); setLpHz(8000);
+    setDelayEnabled(false); setDelaySec(0.15);
+    setGainEnabled(false); setGainDb(0);
   };
 
   const charCount = text.length;
@@ -113,6 +250,11 @@ export default function TTSPage() {
               <>
                 <Sparkles size={16} />
                 生成語音
+                {activeEffectCount > 0 && (
+                  <span className="ml-1 badge badge-accent text-[10px]">
+                    {activeEffectCount} 效果
+                  </span>
+                )}
               </>
             )}
           </button>
@@ -229,7 +371,6 @@ export default function TTSPage() {
           {/* 聲音輪廓 */}
           <div className="card p-4 space-y-2">
             <label className="label">聲音輪廓</label>
-            {/* 預設聲音選項 */}
             <label
               className={clsx(
                 "flex items-center gap-2.5 rounded-lg p-2 cursor-pointer transition-colors",
@@ -296,7 +437,7 @@ export default function TTSPage() {
             )}
           </div>
 
-          {/* 參數 */}
+          {/* 參數調整 */}
           <div className="card p-4 space-y-4">
             <label className="label">參數調整</label>
 
@@ -335,6 +476,148 @@ export default function TTSPage() {
                 <span>-12</span><span>+12</span>
               </div>
             </div>
+          </div>
+
+          {/* 後製效果 */}
+          <div className="card overflow-hidden">
+            {/* 標題列 */}
+            <button
+              type="button"
+              className="w-full flex items-center justify-between p-4 hover:bg-surface-800 transition-colors"
+              onClick={() => setEffectsOpen(!effectsOpen)}
+            >
+              <div className="flex items-center gap-2">
+                <Zap size={13} className={activeEffectCount > 0 ? "text-accent-light" : "text-surface-500"} />
+                <span className="label">後製效果</span>
+                {activeEffectCount > 0 && (
+                  <span className="badge badge-accent text-[10px]">{activeEffectCount}</span>
+                )}
+              </div>
+              {effectsOpen ? (
+                <ChevronUp size={14} className="text-surface-500" />
+              ) : (
+                <ChevronDown size={14} className="text-surface-500" />
+              )}
+            </button>
+
+            {effectsOpen && (
+              <div className="px-4 pb-4 space-y-2">
+                {/* 殘響 */}
+                <EffectBlock
+                  icon={Waves}
+                  label="殘響 Reverb"
+                  enabled={reverbEnabled}
+                  onToggle={setReverbEnabled}
+                >
+                  <EffectSlider
+                    label="空間大小"
+                    value={reverbRoom}
+                    min={0.1} max={1.0} step={0.05}
+                    format={(v) => v.toFixed(2)}
+                    onChange={setReverbRoom}
+                  />
+                  <EffectSlider
+                    label="混響量"
+                    value={reverbWet}
+                    min={0.05} max={0.8} step={0.05}
+                    format={(v) => `${Math.round(v * 100)}%`}
+                    onChange={setReverbWet}
+                  />
+                </EffectBlock>
+
+                {/* 壓縮器 */}
+                <EffectBlock
+                  icon={Activity}
+                  label="壓縮 Compressor"
+                  enabled={compEnabled}
+                  onToggle={setCompEnabled}
+                >
+                  <EffectSlider
+                    label="閾值"
+                    value={compDb}
+                    min={-30} max={-1} step={1}
+                    format={(v) => `${v} dBFS`}
+                    onChange={setCompDb}
+                  />
+                </EffectBlock>
+
+                {/* 高通濾波 */}
+                <EffectBlock
+                  icon={Filter}
+                  label="高通濾波 High-pass"
+                  enabled={hpEnabled}
+                  onToggle={setHpEnabled}
+                >
+                  <EffectSlider
+                    label="截止頻率"
+                    value={hpHz}
+                    min={20} max={2000} step={10}
+                    format={(v) => `${v} Hz`}
+                    onChange={setHpHz}
+                  />
+                </EffectBlock>
+
+                {/* 低通濾波 */}
+                <EffectBlock
+                  icon={Filter}
+                  label="低通濾波 Low-pass"
+                  enabled={lpEnabled}
+                  onToggle={setLpEnabled}
+                >
+                  <EffectSlider
+                    label="截止頻率"
+                    value={lpHz}
+                    min={1000} max={20000} step={500}
+                    format={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)} kHz` : `${v} Hz`}
+                    onChange={setLpHz}
+                  />
+                </EffectBlock>
+
+                {/* 延遲 */}
+                <EffectBlock
+                  icon={Timer}
+                  label="延遲 Delay"
+                  enabled={delayEnabled}
+                  onToggle={setDelayEnabled}
+                >
+                  <EffectSlider
+                    label="延遲時間"
+                    value={delaySec}
+                    min={0.05} max={1.0} step={0.05}
+                    format={(v) => `${v.toFixed(2)}s`}
+                    onChange={setDelaySec}
+                  />
+                </EffectBlock>
+
+                {/* 增益 */}
+                <EffectBlock
+                  icon={Volume2}
+                  label="增益 Gain"
+                  enabled={gainEnabled}
+                  onToggle={setGainEnabled}
+                >
+                  <EffectSlider
+                    label="音量增益"
+                    value={gainDb}
+                    min={-24} max={24} step={1}
+                    format={(v) => `${v > 0 ? "+" : ""}${v} dB`}
+                    onChange={setGainDb}
+                  />
+                </EffectBlock>
+
+                {/* 重置按鈕 */}
+                {activeEffectCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetEffects}
+                    className="btn-ghost w-full text-xs mt-1"
+                  >
+                    <RotateCcw size={11} />
+                    重置所有效果
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

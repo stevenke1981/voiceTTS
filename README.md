@@ -159,7 +159,7 @@ DashScope 建立 cloud_voice_id（背景執行）
 - [x] Phase 3 — 語音複製（Whisper + DashScope）
 - [x] Phase 4 — 即時語音轉換（WebSocket + VAD）
 - [x] Phase 5 — 劇本編輯器（SSE 進度 + 時間軸 + 整軌匯出）
-- [ ] Phase 6 — 音訊後製效果 UI（殘響、壓縮、濾波）
+- [x] Phase 6 — 音訊後製效果 UI（殘響、壓縮、高通/低通濾波、延遲、增益）
 
 ---
 

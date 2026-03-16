@@ -25,8 +25,16 @@ export interface TTSRequest {
   text: string;
   engine: "qwen3_cloud" | "qwen3_local" | "chatterbox" | "cosyvoice";
   voice_profile_id?: string;
-  speed?: number;   // 0.5 ~ 2.0
-  pitch?: number;   // -12 ~ 12 semitones
+  speed?: number;          // 0.5 ~ 2.0
+  pitch?: number;          // -12 ~ 12 semitones
+  // 後製效果
+  reverb_room?: number;    // 0.0 ~ 1.0
+  reverb_wet?: number;     // 0.0 ~ 1.0
+  compression_db?: number; // -30 ~ 0 dBFS
+  highpass_hz?: number;    // 0 = off
+  lowpass_hz?: number;     // 0 = off
+  delay_seconds?: number;  // 0 = off
+  gain_db?: number;        // -24 ~ +24 dB
 }
 
 export interface TTSJob {
