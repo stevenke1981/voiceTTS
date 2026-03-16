@@ -37,11 +37,13 @@ export interface TTSJob {
   created_at: string;
 }
 
-export interface StoryScript {
+export interface StoryCharacter {
   id: string;
   name: string;
-  lines: ScriptLine[];
-  created_at: string;
+  color: string;
+  voice_profile_id: string | null;
+  voice_profile_name: string | null;
+  order: number;
 }
 
 export interface ScriptLine {
@@ -51,6 +53,15 @@ export interface ScriptLine {
   audio_url?: string;
   duration?: number;
   order: number;
+  gen_status: "queued" | "generating" | "done" | "error";
+}
+
+export interface StoryScript {
+  id: string;
+  name: string;
+  characters: StoryCharacter[];
+  lines: ScriptLine[];
+  created_at: string;
 }
 
 // ──────────────────────── API 方法 ────────────────────────
@@ -122,18 +133,50 @@ export const apiClient = {
       return res.data;
     },
     async create(name: string): Promise<StoryScript> {
-      const res = await http.post("/api/story/scripts", { name });
+      const res = await http.post(`/api/story/scripts?name=${encodeURIComponent(name)}`);
       return res.data;
     },
-    async update(id: string, data: Partial<StoryScript>): Promise<StoryScript> {
-      const res = await http.patch(`/api/story/scripts/${id}`, data);
+    async rename(id: string, name: string): Promise<StoryScript> {
+      const res = await http.patch(`/api/story/scripts/${id}/name?name=${encodeURIComponent(name)}`);
       return res.data;
     },
     async delete(id: string): Promise<void> {
       await http.delete(`/api/story/scripts/${id}`);
     },
-    async generateAll(id: string): Promise<void> {
-      await http.post(`/api/story/scripts/${id}/generate`);
+    // 角色
+    async addCharacter(scriptId: string, data: Omit<StoryCharacter, "id" | "voice_profile_name">): Promise<StoryCharacter> {
+      const res = await http.post(`/api/story/scripts/${scriptId}/characters`, data);
+      return res.data;
+    },
+    async updateCharacter(scriptId: string, charId: string, data: Omit<StoryCharacter, "id" | "voice_profile_name">): Promise<StoryCharacter> {
+      const res = await http.patch(`/api/story/scripts/${scriptId}/characters/${charId}`, data);
+      return res.data;
+    },
+    async deleteCharacter(scriptId: string, charId: string): Promise<void> {
+      await http.delete(`/api/story/scripts/${scriptId}/characters/${charId}`);
+    },
+    // 對白
+    async addLine(scriptId: string, data: { character_id: string; text: string; order: number }): Promise<ScriptLine> {
+      const res = await http.post(`/api/story/scripts/${scriptId}/lines`, data);
+      return res.data;
+    },
+    async updateLine(scriptId: string, lineId: string, data: { character_id: string; text: string; order: number }): Promise<ScriptLine> {
+      const res = await http.patch(`/api/story/scripts/${scriptId}/lines/${lineId}`, data);
+      return res.data;
+    },
+    async deleteLine(scriptId: string, lineId: string): Promise<void> {
+      await http.delete(`/api/story/scripts/${scriptId}/lines/${lineId}`);
+    },
+    async reorderLines(scriptId: string, orders: { id: string; order: number }[]): Promise<StoryScript> {
+      const res = await http.post(`/api/story/scripts/${scriptId}/lines/reorder`, orders);
+      return res.data;
+    },
+    // 生成
+    async generateAll(scriptId: string, engine = "qwen3_cloud"): Promise<void> {
+      await http.post(`/api/story/scripts/${scriptId}/generate?engine=${engine}`);
+    },
+    exportUrl(scriptId: string): string {
+      return `${BASE_URL}/api/story/scripts/${scriptId}/export`;
     },
   },
 };

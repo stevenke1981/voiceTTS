@@ -42,9 +42,29 @@ class StoryScript(Base):
     name: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    characters: Mapped[list["StoryCharacter"]] = relationship(
+        back_populates="script", cascade="all, delete-orphan", order_by="StoryCharacter.order"
+    )
     lines: Mapped[list["ScriptLine"]] = relationship(
         back_populates="script", cascade="all, delete-orphan", order_by="ScriptLine.order"
     )
+
+
+class StoryCharacter(Base):
+    """劇本角色（每個角色可綁定一個 VoiceProfile）"""
+    __tablename__ = "story_characters"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    script_id: Mapped[str] = mapped_column(String, ForeignKey("story_scripts.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    color: Mapped[str] = mapped_column(String(30), default="bg-violet-500")
+    voice_profile_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("voice_profiles.id"), nullable=True
+    )
+    order: Mapped[int] = mapped_column(Integer, default=0)
+
+    script: Mapped["StoryScript"] = relationship(back_populates="characters")
+    voice_profile: Mapped["VoiceProfile | None"] = relationship()
 
 
 class ScriptLine(Base):
@@ -53,10 +73,12 @@ class ScriptLine(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     script_id: Mapped[str] = mapped_column(String, ForeignKey("story_scripts.id"))
-    character_id: Mapped[str] = mapped_column(String(100))
+    character_id: Mapped[str] = mapped_column(String, ForeignKey("story_characters.id"))
     text: Mapped[str] = mapped_column(Text)
     order: Mapped[int] = mapped_column(Integer, default=0)
     audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # queued | generating | done | error
+    gen_status: Mapped[str] = mapped_column(String(20), default="queued")
 
     script: Mapped["StoryScript"] = relationship(back_populates="lines")

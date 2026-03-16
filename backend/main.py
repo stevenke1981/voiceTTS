@@ -24,7 +24,7 @@ from api.transcribe import router as transcribe_router
 async def lifespan(app: FastAPI):
     await init_db()
     # 確保儲存目錄存在
-    for d in ["storage/audio", "storage/profiles"]:
+    for d in ["storage/audio", "storage/profiles", "storage/audio/story"]:
         Path(d).mkdir(parents=True, exist_ok=True)
     print("✅ VoiceTTS 後端啟動 — http://localhost:8765")
     yield
@@ -57,6 +57,11 @@ app.mount(
     "/audio/profiles",
     StaticFiles(directory="storage/profiles"),
     name="profiles",
+)
+app.mount(
+    "/audio/story",
+    StaticFiles(directory="storage/audio/story"),
+    name="story-audio",
 )
 
 # API 路由
