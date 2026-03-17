@@ -18,7 +18,7 @@ librosa==0.10.2
 numpy>=1.26.0
 
 # Spotify Pedalboard 音訊效果
-pedalboard==0.9.7
+pedalboard==0.9.22
 
 # Whisper 語音轉文字
 openai-whisper==20240930
