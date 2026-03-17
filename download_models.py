@@ -181,19 +181,36 @@ def install_cosyvoice() -> bool:
         pth_file.write_text(pth_content, encoding="utf-8")
         print(OK(f"已寫入 {pth_file}"))
 
-        # 4. 安裝依賴
-        #    --prefer-binary：優先使用預編譯 wheel，避免 grpcio 等原始碼編譯問題
-        #    --no-deps on conflicting packages：跳過與主專案衝突的版本限制
-        req_file = install_dir / "requirements.txt"
-        if req_file.exists():
-            print(INFO("安裝 CosyVoice 依賴（--prefer-binary，跳過原始碼編譯）…"))
-            subprocess.run([
-                sys.executable, "-m", "pip", "install",
-                "--prefer-binary",
-                "--no-build-isolation",
-                "-r", str(req_file),
-                "--extra-index-url", "https://download.pytorch.org/whl/cu121",
-            ])
+        # 4. 安裝 CosyVoice 最小必要依賴
+        #
+        #    不使用 requirements.txt，原因：
+        #      - 版本限制（matplotlib==3.7.5、numpy==1.26.4 等）在 Python 3.13 無
+        #        預編譯 wheel 且原始碼編譯失敗
+        #      - torch/torchaudio/transformers/librosa/soundfile 主專案已安裝
+        #      - deepspeed / tensorrt* / onnxruntime-gpu 僅 Linux 使用
+        #      - fastapi/uvicorn/pydantic 主專案已有相容版本
+        #
+        #    只安裝 CosyVoice 獨有且尚未安裝的套件，全部使用 --prefer-binary
+        COSYVOICE_DEPS = [
+            "conformer",
+            "diffusers",
+            "hydra-core",
+            "HyperPyYAML",
+            "inflect",
+            "omegaconf",
+            "onnxruntime",
+            "protobuf",
+            "x-transformers",
+            "WeTextProcessing",
+            "modelscope",
+            "pybind11",
+        ]
+        print(INFO("安裝 CosyVoice 最小依賴（--prefer-binary）…"))
+        subprocess.run([
+            sys.executable, "-m", "pip", "install",
+            "--prefer-binary",
+            *COSYVOICE_DEPS,
+        ])
 
     # 5. 下載模型權重
     return hf_download("FunAudioLLM/CosyVoice2-0.5B", "CosyVoice2-0.5B")
