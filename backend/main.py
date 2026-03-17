@@ -51,6 +51,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 確保靜態目錄在掛載前存在（StaticFiles 在模組載入時就需要目錄）
+for _d in ["storage/audio", "storage/profiles", "storage/audio/story"]:
+    Path(_d).mkdir(parents=True, exist_ok=True)
+
 # 靜態檔案服務（生成的音訊）
 app.mount("/audio", StaticFiles(directory="storage/audio"), name="audio")
 app.mount(

@@ -62,6 +62,25 @@ echo [OK] pip 已升級
 :: ── 6. 安裝後端依賴 ──
 echo.
 echo [4/4] 安裝後端依賴 (pip install -r requirements.txt)...
+
+:: setuptools >= 75 移除了 pkg_resources；安裝 69.x（含 pkg_resources 的最後穩定版）
+call backend\.venv\Scripts\pip.exe install "setuptools==69.5.1" wheel
+if errorlevel 1 (
+    echo [錯誤] setuptools 安裝失敗
+    pause
+    exit /b 1
+)
+
+:: openai-whisper setup.py 在 Python 3.13 有兩個 bug（exec/locals 行為變更）
+:: 使用 install_whisper.py 下載 sdist、套用修補、再安裝
+call backend\.venv\Scripts\python.exe install_whisper.py
+if errorlevel 1 (
+    echo [錯誤] openai-whisper 安裝失敗
+    pause
+    exit /b 1
+)
+
+:: 安裝其餘依賴（openai-whisper 已安裝，pip 會跳過）
 call backend\.venv\Scripts\pip.exe install -r backend\requirements.txt
 if errorlevel 1 (
     echo [錯誤] 後端依賴安裝失敗

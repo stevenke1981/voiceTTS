@@ -7,6 +7,7 @@ websockets==13.0.1
 # 資料庫
 sqlalchemy==2.0.35
 aiosqlite==0.20.0
+greenlet>=3.0.0
 
 # AI / 音訊
 openai>=1.50.0         # Qwen3 DashScope 相容 OpenAI API
@@ -20,8 +21,8 @@ numpy>=1.26.0
 # Spotify Pedalboard 音訊效果
 pedalboard==0.9.22
 
-# Whisper 語音轉文字（setuptools 須先於 openai-whisper 安裝，Python 3.13 不內建 pkg_resources）
-setuptools>=75.0
+# Whisper 語音轉文字
+# 注意：setuptools 由 INSTALL.BAT 安裝（需固定在 69.x 以保留 pkg_resources）
 openai-whisper==20240930
 
 # 工具

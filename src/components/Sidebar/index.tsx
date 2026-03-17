@@ -7,7 +7,7 @@ import {
   BookOpen,
   Library,
   Settings,
-  Waveform,
+  AudioWaveform,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -49,7 +49,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 py-4 border-b border-surface-800">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/20">
-          <Waveform size={16} className="text-accent-light" />
+          <AudioWaveform size={16} className="text-accent-light" />
         </div>
         <div>
           <p className="text-sm font-semibold text-surface-100">VoiceTTS</p>
