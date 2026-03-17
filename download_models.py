@@ -201,7 +201,8 @@ def install_cosyvoice() -> bool:
             "onnxruntime",
             "protobuf",
             "x-transformers",
-            "WeTextProcessing",
+            # WeTextProcessing skipped on Windows: requires pynini which needs gcc
+            # (no pre-built wheel for Windows, MSVC build fails with -Wno-register)
             "modelscope",
             "pybind11",
         ]
