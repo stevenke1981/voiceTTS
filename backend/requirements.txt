@@ -20,7 +20,8 @@ numpy>=1.26.0
 # Spotify Pedalboard 音訊效果
 pedalboard==0.9.22
 
-# Whisper 語音轉文字
+# Whisper 語音轉文字（setuptools 須先於 openai-whisper 安裝，Python 3.13 不內建 pkg_resources）
+setuptools>=75.0
 openai-whisper==20240930
 
 # 工具
