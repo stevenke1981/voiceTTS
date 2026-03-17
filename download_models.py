@@ -128,14 +128,25 @@ def hf_download(repo_id: str, label: str) -> bool:
 #  CosyVoice2 特殊安裝
 # ─────────────────────────────────────────────
 
+def _site_packages() -> Path:
+    """回傳目前 Python 的 site-packages 路徑"""
+    import site
+    dirs = site.getsitepackages()
+    return Path(dirs[0])
+
+
 def install_cosyvoice() -> bool:
     """
-    CosyVoice2 不在 PyPI，需從 GitHub clone 後安裝。
-    參考：https://github.com/FunAudioLLM/CosyVoice
+    CosyVoice2 不在 PyPI，也沒有 setup.py / pyproject.toml。
+    安裝方式：
+      1. git clone 到 backend/vendor/CosyVoice
+      2. 在 site-packages 放 cosyvoice.pth，讓 Python 找到套件
+      3. 安裝依賴（grpcio 等需要 --prefer-binary 跳過原始碼編譯）
+      4. 下載 HuggingFace 模型權重
     """
     install_dir = Path("backend") / "vendor" / "CosyVoice"
 
-    # 1. 檢查是否已安裝
+    # 1. 檢查是否已可導入
     try:
         from cosyvoice.cli.cosyvoice import CosyVoice2  # noqa: F401
         print(OK("CosyVoice2 Python 套件已安裝"))
@@ -148,12 +159,11 @@ def install_cosyvoice() -> bool:
             print(WARN("手動安裝說明：https://github.com/FunAudioLLM/CosyVoice#install"))
             return False
 
-        install_dir.mkdir(parents=True, exist_ok=True)
-
+        # 2. Clone（若尚未 clone）
         if not (install_dir / ".git").exists():
             print(INFO(f"複製 CosyVoice 到 {install_dir} …"))
             r = subprocess.run([
-                "git", "clone", "--depth", "1",
+                "git", "clone", "--depth", "1", "--recurse-submodules",
                 "https://github.com/FunAudioLLM/CosyVoice.git",
                 str(install_dir),
             ])
@@ -163,20 +173,29 @@ def install_cosyvoice() -> bool:
         else:
             print(OK(f"CosyVoice 原始碼已存在：{install_dir}"))
 
-        # 安裝依賴
+        # 3. 加入 .pth 讓 Python 找到 cosyvoice 套件
+        #    （CosyVoice 無 setup.py/pyproject.toml，用 .pth 代替 pip install -e）
+        pth_file = _site_packages() / "cosyvoice.pth"
+        abs_dir = install_dir.resolve()
+        pth_content = f"{abs_dir}\n{abs_dir / 'third_party' / 'Matcha-TTS'}\n"
+        pth_file.write_text(pth_content, encoding="utf-8")
+        print(OK(f"已寫入 {pth_file}"))
+
+        # 4. 安裝依賴
+        #    --prefer-binary：優先使用預編譯 wheel，避免 grpcio 等原始碼編譯問題
+        #    --no-deps on conflicting packages：跳過與主專案衝突的版本限制
         req_file = install_dir / "requirements.txt"
         if req_file.exists():
-            print(INFO("安裝 CosyVoice 依賴…"))
-            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(req_file)])
+            print(INFO("安裝 CosyVoice 依賴（--prefer-binary，跳過原始碼編譯）…"))
+            subprocess.run([
+                sys.executable, "-m", "pip", "install",
+                "--prefer-binary",
+                "--no-build-isolation",
+                "-r", str(req_file),
+                "--extra-index-url", "https://download.pytorch.org/whl/cu121",
+            ])
 
-        # 以可編輯模式安裝
-        print(INFO("安裝 CosyVoice 套件（editable）…"))
-        r = subprocess.run([sys.executable, "-m", "pip", "install", "-e", str(install_dir)])
-        if r.returncode != 0:
-            print(ERR("CosyVoice 安裝失敗"))
-            return False
-
-    # 2. 下載模型權重
+    # 5. 下載模型權重
     return hf_download("FunAudioLLM/CosyVoice2-0.5B", "CosyVoice2-0.5B")
 
 
